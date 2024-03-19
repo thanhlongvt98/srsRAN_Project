@@ -337,7 +337,7 @@ public:
 
     return ues.at(ue_index).get_ngap_rrc_ue_adapter();
   }
-
+  // thanhlong_le TODO: What is rrc_ue_cu_cp_adapter?
   /// \brief Get the CU-CP to RRC UE adapter of the UE.
   cu_cp_rrc_ue_adapter& get_cu_cp_rrc_ue_adapter(ue_index_t ue_index)
   {
@@ -346,7 +346,7 @@ public:
 
     return ues.at(ue_index).get_cu_cp_rrc_ue_adapter();
   }
-
+  // thanhlong_le TODO: What is rrc_ue_cu_cp_adapter?
   rrc_ue_cu_cp_adapter& get_rrc_ue_cu_cp_adapter(ue_index_t ue_index)
   {
     srsran_assert(ue_index != ue_index_t::invalid, "Invalid ue_index={}", ue_index);
@@ -365,9 +365,10 @@ private:
   ue_index_t get_next_ue_index(du_index_t du_index);
 
   srslog::basic_logger&         logger = srslog::fetch_basic_logger("CU-UEMNG");
-  const ue_configuration        ue_config;
-  const up_resource_manager_cfg up_config;
+  const ue_configuration        ue_config; // thanhlong_le TODO: read more about this
+  const up_resource_manager_cfg up_config; // thanhlong_le TODO: read more about this
 
+  // thanhlong_le TODO: read more about this
   // Manager of UE task schedulers.
   ue_task_scheduler_manager ue_task_scheds;
 

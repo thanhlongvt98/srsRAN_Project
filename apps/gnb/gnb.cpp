@@ -457,19 +457,24 @@ int main(int argc, char** argv)
   std::unique_ptr<srsran::srs_cu_cp::cu_cp> cu_cp_obj = create_cu_cp(cu_cp_cfg);
 
   // Connect NGAP adpter to CU-CP to pass NGAP messages.
-  ngap_adapter->connect_cu_cp(cu_cp_obj->get_ng_handler().get_ngap_message_handler(),
+  ngap_adapter->connect_cu_cp(cu_cp_obj->get_ng_handler().get_ngap_message_handler(), 
                               cu_cp_obj->get_ng_handler().get_ngap_event_handler());
-
+  // Above function will establish sctp connection to AMF
+  // thanhlong_le: above handlers are below 2 in lib/ngap/ngap_impl.cpp
+  // ngap message handler functions
+  // void handle_message(const ngap_message& msg) override;
+  // void handle_connection_loss() override {}
   // Connect E1AP to CU-CP.
-  e1ap_gw.attach_cu_cp(cu_cp_obj->get_e1_handler());
+  e1ap_gw.attach_cu_cp(cu_cp_obj->get_e1_handler()); // thanhlong_le: pass the handler in lib/cu_cp/cu_up_processor/cu_up_processor_repository.cpp
 
   // Connect F1-C to CU-CP.
-  f1c_gw.attach_cu_cp(cu_cp_obj->get_f1c_handler());
+  f1c_gw.attach_cu_cp(cu_cp_obj->get_f1c_handler());  // thanhlong_le: pass the handler inlib/cu_cp/du_processor/du_processor_repository.cpp
 
   // start CU-CP
   gnb_logger.info("Starting CU-CP...");
-  cu_cp_obj->start();
+  cu_cp_obj->start(); // thanhlong_le: setup N2 connection to AMF
   gnb_logger.info("CU-CP started successfully");
+  // TODO: Understand N2 connection
 
   if (not cu_cp_obj->get_ng_handler().amf_is_connected()) {
     report_error("CU-CP failed to connect to AMF");
