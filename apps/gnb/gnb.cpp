@@ -333,6 +333,9 @@ int main(int argc, char** argv)
   // Log build info
   gnb_logger.info("Built in {} mode using {}", get_build_mode(), get_build_info());
 
+  // Log CPU architecture.
+  cpu_architecture_info::get().print_cpu_info(gnb_logger);
+
   // Check and log included CPU features and check support by current CPU
   if (cpu_supports_included_features()) {
     gnb_logger.debug("Required CPU features: {}", get_cpu_feature_info());
@@ -484,15 +487,14 @@ int main(int argc, char** argv)
   srsran::srs_cu_up::cu_up_configuration cu_up_cfg = generate_cu_up_config(gnb_cfg);
   cu_up_cfg.ctrl_executor                          = workers.cu_up_ctrl_exec;
   cu_up_cfg.cu_up_e2_exec                          = workers.cu_up_e2_exec;
-  cu_up_cfg.dl_executor                            = workers.cu_up_dl_exec;
-  cu_up_cfg.ul_executor                            = workers.cu_up_ul_exec;
-  cu_up_cfg.io_ul_executor                         = workers.cu_up_ul_exec; // Optionally select separate exec for UL IO
-  cu_up_cfg.e1ap.e1ap_conn_client                  = &e1ap_gw;
-  cu_up_cfg.f1u_gateway                            = f1u_conn->get_f1u_cu_up_gateway();
-  cu_up_cfg.epoll_broker                           = epoll_broker.get();
-  cu_up_cfg.gtpu_pcap                              = gtpu_p.get();
-  cu_up_cfg.timers                                 = cu_timers;
-  cu_up_cfg.qos                                    = generate_cu_up_qos_config(gnb_cfg);
+  cu_up_cfg.ue_exec_pool                           = workers.cu_up_exec_mapper.get();
+  cu_up_cfg.io_ul_executor        = workers.cu_up_io_ul_exec; // Optionally select separate exec for UL IO
+  cu_up_cfg.e1ap.e1ap_conn_client = &e1ap_gw;
+  cu_up_cfg.f1u_gateway           = f1u_conn->get_f1u_cu_up_gateway();
+  cu_up_cfg.epoll_broker          = epoll_broker.get();
+  cu_up_cfg.gtpu_pcap             = gtpu_p.get();
+  cu_up_cfg.timers                = cu_timers;
+  cu_up_cfg.qos                   = generate_cu_up_qos_config(gnb_cfg);
 
   // create and start CU-UP
   std::unique_ptr<srsran::srs_cu_up::cu_up_interface> cu_up_obj = create_cu_up(cu_up_cfg);
@@ -524,6 +526,9 @@ int main(int argc, char** argv)
         variant_get<ru_generic_configuration>(ru_cfg.config), gnb_cfg.log_cfg, workers, ru_ul_adapt, ru_timing_adapt);
 
     ru_object = create_generic_ru(variant_get<ru_generic_configuration>(ru_cfg.config));
+
+    // Set the generic RU controller for the GNB console.
+    console.set_ru_controller(ru_object->get_controller());
   } else {
     ru_dummy_dependencies ru_dependencies;
     configure_ru_dummy_executors_and_notifiers(variant_get<ru_dummy_configuration>(ru_cfg.config),

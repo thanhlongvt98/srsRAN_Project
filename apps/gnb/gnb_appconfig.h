@@ -44,6 +44,7 @@
 #include "srsran/ran/sib/system_info_config.h"
 #include "srsran/ran/slot_pdu_capacity_constants.h"
 #include "srsran/ran/subcarrier_spacing.h"
+#include "srsran/support/cpu_architecture_info.h"
 #include "srsran/support/unique_thread.h"
 #include "srsran/support/units.h"
 #include <map>
@@ -643,12 +644,15 @@ struct amf_appconfig {
   uint16_t    port                   = 38412;
   std::string bind_addr              = "127.0.0.1";
   std::string n2_bind_addr           = "auto";
+  std::string n2_bind_interface      = "auto";
   std::string n3_bind_addr           = "auto";
+  std::string n3_bind_interface      = "auto";
   int         sctp_rto_initial       = 120;
   int         sctp_rto_min           = 120;
   int         sctp_rto_max           = 500;
   int         sctp_init_max_attempts = 3;
   int         sctp_max_init_timeo    = 500;
+  bool        sctp_nodelay           = false;
   int         udp_rx_max_msgs        = 256;
   bool        no_core                = false;
 };
@@ -726,10 +730,10 @@ struct security_appconfig {
 };
 
 struct cu_cp_appconfig {
-  uint16_t           max_nof_dus                = 6;
-  uint16_t           max_nof_cu_ups             = 6;
-  int                inactivity_timer           = 7200; // in seconds
-  unsigned           ue_context_setup_timeout_s = 3;    // in seconds (must be larger than T310)
+  uint16_t           max_nof_dus               = 6;
+  uint16_t           max_nof_cu_ups            = 6;
+  int                inactivity_timer          = 5; // in seconds
+  unsigned           pdu_session_setup_timeout = 3; // in seconds (must be larger than T310)
   mobility_appconfig mobility_config;
   rrc_appconfig      rrc_config;
   security_appconfig security_config;
@@ -815,11 +819,11 @@ struct pcap_appconfig {
 
 /// Metrics report configuration.
 struct metrics_appconfig {
-  struct {
+  struct rlc_metrics {
     unsigned report_period = 0; // RLC report period in ms
     bool     json_enabled  = false;
   } rlc;
-  struct {
+  struct pdcp_metrics {
     unsigned report_period = 0; // PDCP report period in ms
   } pdcp;
   unsigned cu_cp_statistics_report_period = 1; // Statistics report period in seconds
@@ -829,6 +833,7 @@ struct metrics_appconfig {
   std::string addr                     = "127.0.0.1";
   uint16_t    port                     = 55555;
   bool        autostart_stdout_metrics = false;
+  unsigned    stdout_metrics_period    = 1000; // Statistics report period in milliseconds
 };
 
 /// Lower physical layer thread profiles.
@@ -930,6 +935,17 @@ struct ru_sdr_expert_appconfig {
   /// \note Powering up the transmitter ahead of time requires starting the transmission earlier, and reduces the time
   /// window for the radio to transmit the provided samples.
   float power_ramping_time_us = 0.0F;
+  /// \brief Lower PHY downlink baseband buffer size policy.
+  ///
+  /// Selects the size policy of the baseband buffers that pass DL samples from the lower PHY to the radio.
+  /// Available options:
+  ///   - auto: the size policy is automatically selected based on the SDR front-end.
+  ///   - single-packet: the buffer size matches the optimal buffer size indicated by the SDR front-end.
+  ///   - half-slot:     the buffer size matches the number of samples per half-slot.
+  ///   - slot:          the buffer size matches the number of samples per slot.
+  ///   - optimal-slot:  the buffer size is equal to the greatest multiple of the optimal buffer size indicated by the
+  ///                    SDR front-end that results in a buffer size smaller than the number of samples per slot.
+  std::string dl_buffer_size_policy = "auto";
 };
 
 /// gNB app SDR Radio Unit configuration.
@@ -978,21 +994,21 @@ struct ru_ofh_base_cell_appconfig {
   /// Set this option when the operating bandwidth of the RU is larger than the configured bandwidth of the cell.
   optional<bs_channel_bandwidth_fr1> ru_operating_bw;
   /// T1a maximum parameter for downlink Control-Plane in microseconds.
-  unsigned T1a_max_cp_dl = 500U;
+  std::chrono::microseconds T1a_max_cp_dl{500};
   /// T1a minimum parameter for downlink Control-Plane in microseconds.
-  unsigned T1a_min_cp_dl = 258U;
+  std::chrono::microseconds T1a_min_cp_dl{258};
   /// T1a maximum parameter for uplink Control-Plane in microseconds.
-  unsigned T1a_max_cp_ul = 500U;
+  std::chrono::microseconds T1a_max_cp_ul{500};
   /// T1a minimum parameter for uplink Control-Plane in microseconds.
-  unsigned T1a_min_cp_ul = 285U;
+  std::chrono::microseconds T1a_min_cp_ul{285};
   /// T1a maximum parameter for downlink User-Plane in microseconds.
-  unsigned T1a_max_up = 300U;
+  std::chrono::microseconds T1a_max_up{300};
   /// T1a minimum parameter for downlink User-Plane in microseconds.
-  unsigned T1a_min_up = 85U;
+  std::chrono::microseconds T1a_min_up{85};
   /// Ta4 maximum parameter for uplink User-Plane in microseconds.
-  unsigned Ta4_max = 300U;
+  std::chrono::microseconds Ta4_max{300};
   /// Ta4 minimum parameter for uplink User-Plane in microseconds.
-  unsigned Ta4_min = 85U;
+  std::chrono::microseconds Ta4_min{85};
   /// Enables the Control-Plane PRACH message signalling.
   bool is_prach_control_plane_enabled = true;
   /// \brief Downlink broadcast flag.
@@ -1156,7 +1172,7 @@ struct ofh_threads_appconfig {
 struct expert_threads_appconfig {
   expert_threads_appconfig()
   {
-    unsigned nof_threads = compute_host_nof_hardware_threads();
+    unsigned nof_threads = cpu_architecture_info::get().get_host_nof_available_cpus();
 
     if (nof_threads < 4) {
       upper_threads.nof_ul_threads            = 1;
@@ -1211,6 +1227,12 @@ struct hal_appconfig {
   std::string eal_args;
 };
 
+/// FAPI configuration of the gNB app.
+struct fapi_appconfig {
+  /// Number of slots the L2 is running ahead of the L1.
+  unsigned l2_nof_slots_ahead = 0;
+};
+
 /// Monolithic gnb application configuration.
 struct gnb_appconfig {
   /// Logging configuration.
@@ -1235,18 +1257,20 @@ struct gnb_appconfig {
   e2_appconfig e2_cfg;
   /// Radio Unit configuration.
   variant<ru_sdr_appconfig, ru_ofh_appconfig, ru_dummy_appconfig> ru_cfg = {ru_sdr_appconfig{}};
+  /// FAPI configuration.
+  fapi_appconfig fapi_cfg;
   /// \brief Cell configuration.
   ///
   /// \note Add one cell by default.
   std::vector<cell_appconfig> cells_cfg = {{}};
 
-  /// \brief QoS configuration.
+  /// QoS configuration.
   std::vector<qos_appconfig> qos_cfg;
 
-  /// \brief QoS configuration.
+  /// SRB configuration.
   std::map<srb_id_t, srb_appconfig> srb_cfg;
 
-  /// \brief Network slice configuration.
+  /// Network slice configuration.
   std::vector<s_nssai_t> slice_cfg = {s_nssai_t{1}};
 
   /// Expert physical layer configuration.
@@ -1255,16 +1279,16 @@ struct gnb_appconfig {
   /// Configuration for testing purposes.
   test_mode_appconfig test_mode_cfg = {};
 
-  /// \brief NTN configuration.
+  /// NTN configuration.
   optional<ntn_config> ntn_cfg;
 
-  /// \brief Buffer pool configuration.
+  /// Buffer pool configuration.
   buffer_pool_appconfig buffer_pool_config;
 
-  /// \brief Expert configuration.
+  /// Expert configuration.
   expert_execution_appconfig expert_execution_cfg;
 
-  /// \brief HAL configuration.
+  /// HAL configuration.
   optional<hal_appconfig> hal_config;
 };
 

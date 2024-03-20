@@ -223,6 +223,11 @@ static void configure_cli11_metrics_args(CLI::App& app, metrics_appconfig& metri
   app.add_option(
          "--autostart_stdout_metrics", metrics_params.autostart_stdout_metrics, "Autostart stdout metrics reporting")
       ->capture_default_str();
+
+  app.add_option("--stdout_metrics_period",
+                 metrics_params.stdout_metrics_period,
+                 "DU statistics report period in milliseconds. This metrics sets the console output period.")
+      ->capture_default_str();
 }
 
 static void configure_cli11_slicing_args(CLI::App& app, s_nssai_t& slice_params)
@@ -245,11 +250,18 @@ static void configure_cli11_amf_args(CLI::App& app, amf_appconfig& amf_params)
       ->check(CLI::ValidIPV4);
   app.add_option("--n3_bind_addr", amf_params.n3_bind_addr, "Local IP address to bind for N3 interface")
       ->check(CLI::ValidIPV4);
+  app.add_option("--n3_bind_interface", amf_params.n3_bind_interface, "Network device to bind for N3 interface")
+      ->capture_default_str();
+  app.add_option("--n2_bind_interface", amf_params.n2_bind_interface, "Network device to bind for N2 interface")
+      ->capture_default_str();
   app.add_option("--sctp_rto_initial", amf_params.sctp_rto_initial, "SCTP initial RTO value");
   app.add_option("--sctp_rto_min", amf_params.sctp_rto_min, "SCTP RTO min");
   app.add_option("--sctp_rto_max", amf_params.sctp_rto_max, "SCTP RTO max");
   app.add_option("--sctp_init_max_attempts", amf_params.sctp_init_max_attempts, "SCTP init max attempts");
   app.add_option("--sctp_max_init_timeo", amf_params.sctp_max_init_timeo, "SCTP max init timeout");
+  app.add_option("--sctp_nodelay",
+                 amf_params.sctp_nodelay,
+                 "Send SCTP messages as soon as possible without any Nagle-like algorithm");
   app.add_option("--udp_max_rx_msgs", amf_params.udp_rx_max_msgs, "Maximum amount of messages RX in a single syscall");
   app.add_option("--no_core", amf_params.no_core, "Allow gNB to run without a core");
 }
@@ -413,7 +425,6 @@ static void configure_cli11_security_args(CLI::App& app, security_appconfig& con
                  config.nia_preference_list,
                  "Ordered preference list for the selection of encryption algorithm (NIA) (default: NIA2, NIA1)")
       ->capture_default_str();
-  ;
 }
 
 static void configure_cli11_cu_cp_args(CLI::App& app, cu_cp_appconfig& cu_cp_params)
@@ -428,11 +439,10 @@ static void configure_cli11_cu_cp_args(CLI::App& app, cu_cp_appconfig& cu_cp_par
       ->capture_default_str()
       ->check(CLI::Range(1, 7200));
 
-  app.add_option(
-         "--ue_context_setup_timeout_s",
-         cu_cp_params.ue_context_setup_timeout_s,
-         "Timeout for the reception of an InitialContextSetupRequest after an InitialUeMessage was sent to the "
-         "core, in seconds. The timeout must be larger than T310. If the value is reached, the UE will be released")
+  app.add_option("--pdu_session_setup_timeout",
+                 cu_cp_params.pdu_session_setup_timeout,
+                 "Timeout for the setup of a PDU session after an InitialUeMessage was sent to the core, in "
+                 "seconds. The timeout must be larger than T310. If the value is reached, the UE will be released")
       ->capture_default_str();
 
   CLI::App* mobility_subcmd = app.add_subcommand("mobility", "Mobility configuration");
@@ -968,6 +978,14 @@ static void configure_cli11_si_sched_info(CLI::App& app, sib_appconfig::si_sched
       ->check(CLI::IsMember({2, 19}));
 }
 
+static void configure_cli11_epoch_time(CLI::App& app, epoch_time_t& epoch_time)
+{
+  app.add_option("--sfn", epoch_time.sfn, "SFN Part")->capture_default_str()->check(CLI::Range(0, 1023));
+  app.add_option("--subframe_number", epoch_time.subframe_number, "Sub-frame number Part")
+      ->capture_default_str()
+      ->check(CLI::Range(0, 9));
+}
+
 static void configure_cli11_ephemeris_info_ecef(CLI::App& app, ecef_coordinates_t& ephemeris_info)
 {
   app.add_option("--pos_x", ephemeris_info.position_x, "X Position of the satellite")
@@ -1004,6 +1022,7 @@ static void configure_cli11_ephemeris_info_orbital(CLI::App& app, orbital_coordi
 }
 static void configure_cli11_ntn_args(CLI::App&              app,
                                      optional<ntn_config>&  ntn,
+                                     epoch_time_t&          epoch_time,
                                      orbital_coordinates_t& orbital_coordinates,
                                      ecef_coordinates_t&    ecef_coordinates)
 {
@@ -1014,6 +1033,10 @@ static void configure_cli11_ntn_args(CLI::App&              app,
 
   ntn.value().ta_info.emplace();
   app.add_option("--ta_common", ntn->ta_info->ta_common, "TA common offset");
+
+  // epoch time.
+  CLI::App* epoch_time_subcmd = app.add_subcommand("epoch_time", "Epoch time for the NTN assistance information");
+  configure_cli11_epoch_time(*epoch_time_subcmd, epoch_time);
 
   // ephemeris configuration.
   CLI::App* ephem_subcmd_ecef =
@@ -1659,6 +1682,14 @@ static void configure_cli11_test_mode_args(CLI::App& app, test_mode_appconfig& t
 
 static void configure_cli11_ru_sdr_expert_args(CLI::App& app, ru_sdr_expert_appconfig& config)
 {
+  auto buffer_size_policy_check = [](const std::string& value) -> std::string {
+    if (value == "auto" || value == "single-packet" || value == "half-slot" || value == "slot" ||
+        value == "optimal-slot") {
+      return {};
+    }
+    return "Invalid DL buffer size policy. Accepted values [auto,single-packet,half-slot,slot,optimal-slot]";
+  };
+
   app.add_option("--low_phy_dl_throttling",
                  config.lphy_dl_throttling,
                  "Throttles the lower PHY DL baseband generation. The range is (0, 1). Set it to zero to disable it.")
@@ -1672,6 +1703,12 @@ static void configure_cli11_ru_sdr_expert_args(CLI::App& app, ru_sdr_expert_appc
                  "Specifies the power ramping time in microseconds, it proactively initiates the transmission and "
                  "mitigates transient effects.")
       ->capture_default_str();
+  app.add_option(
+         "--dl_buffer_size_policy",
+         config.dl_buffer_size_policy,
+         "Selects the size policy of the baseband buffers that pass DL samples from the lower PHY to the radio.")
+      ->capture_default_str()
+      ->check(buffer_size_policy_check);
 }
 
 static void configure_cli11_ru_sdr_args(CLI::App& app, ru_sdr_appconfig& config)
@@ -1936,11 +1973,17 @@ static void configure_cli11_hal_args(CLI::App& app, optional<hal_appconfig>& con
 
 static error_type<std::string> is_valid_cpu_index(unsigned cpu_idx)
 {
-  os_sched_affinity_bitmask one_cpu_mask(cpu_idx);
+  std::string error_message = fmt::format("Invalid CPU core selected '{}'. Valid CPU ids: {}",
+                                          cpu_idx,
+                                          os_sched_affinity_bitmask::available_cpus().get_cpu_ids());
+
+  os_sched_affinity_bitmask one_cpu_mask;
+  if (cpu_idx >= one_cpu_mask.size()) {
+    return error_message;
+  }
+  one_cpu_mask.set(cpu_idx);
   if (not one_cpu_mask.subtract(os_sched_affinity_bitmask::available_cpus()).empty()) {
-    return fmt::format("Invalid CPU core selected '{}'. Valid CPU ids: {}",
-                       cpu_idx,
-                       os_sched_affinity_bitmask::available_cpus().get_cpu_ids());
+    return error_message;
   }
   return default_success_t();
 }
@@ -2305,12 +2348,18 @@ static void manage_hal_optional(CLI::App& app, gnb_appconfig& gnb_cfg)
 
 static void manage_ntn_optional(CLI::App&             app,
                                 gnb_appconfig&        gnb_cfg,
+                                epoch_time_t&         epoch_time,
                                 orbital_coordinates_t orbital_coordinates,
                                 ecef_coordinates_t    ecef_coordinates)
 {
   auto     ntn_app             = app.get_subcommand_ptr("ntn");
+  unsigned nof_epoch_entries   = ntn_app->get_subcommand("epoch_time")->count_all();
   unsigned nof_ecef_entries    = ntn_app->get_subcommand("ephemeris_info_ecef")->count_all();
   unsigned nof_orbital_entries = ntn_app->get_subcommand("ephemeris_orbital")->count_all();
+
+  if (nof_epoch_entries) {
+    gnb_cfg.ntn_cfg.value().epoch_time = epoch_time;
+  }
 
   if (nof_ecef_entries) {
     gnb_cfg.ntn_cfg.value().ephemeris_info = ecef_coordinates;
@@ -2374,6 +2423,13 @@ static void manage_processing_delay(CLI::App& app, gnb_appconfig& gnb_cfg)
   manage_max_request_headroom_size(app, gnb_cfg);
 }
 
+static void configure_cli11_fapi_args(CLI::App& app, fapi_appconfig& config)
+{
+  app.add_option("--l2_nof_slots_ahead", config.l2_nof_slots_ahead, "Number of slots the L2 is running ahead of the L1")
+      ->capture_default_str()
+      ->check(CLI::Range(0, 5));
+}
+
 void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed_appconfig& gnb_parsed_cfg)
 {
   gnb_appconfig& gnb_cfg = gnb_parsed_cfg.config;
@@ -2407,15 +2463,16 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
   CLI::App* cu_cp_subcmd = app.add_subcommand("cu_cp", "CU-CP parameters")->configurable();
   configure_cli11_cu_cp_args(*cu_cp_subcmd, gnb_cfg.cu_cp_cfg);
 
-  // CU-UP section
+  // CU-UP section.
   CLI::App* cu_up_subcmd = app.add_subcommand("cu_up", "CU-CP parameters")->configurable();
   configure_cli11_cu_up_args(*cu_up_subcmd, gnb_cfg.cu_up_cfg);
 
-  /// NTN section
+  // NTN section.
   CLI::App*                    ntn_subcmd = app.add_subcommand("ntn", "NTN parameters")->configurable();
+  static epoch_time_t          epoch_time;
   static ecef_coordinates_t    ecef_coordinates;
   static orbital_coordinates_t orbital_coordinates;
-  configure_cli11_ntn_args(*ntn_subcmd, gnb_cfg.ntn_cfg, orbital_coordinates, ecef_coordinates);
+  configure_cli11_ntn_args(*ntn_subcmd, gnb_cfg.ntn_cfg, epoch_time, orbital_coordinates, ecef_coordinates);
 
   // NOTE: CLI11 needs that the life of the variable lasts longer than the call of this function. As both options need
   // to be added and a variant is used to store the Radio Unit configuration, the configuration is parsed in a helper
@@ -2433,7 +2490,11 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
   CLI::App* ru_dummy_subcmd = app.add_subcommand("ru_dummy", "Dummy Radio Unit configuration")->configurable();
   configure_cli11_ru_dummy_args(*ru_dummy_subcmd, dummy_cfg);
 
-  // Common cell parameters.
+  // FAPI section.
+  CLI::App* fapi_subcmd = app.add_subcommand("fapi", "FAPI configuration")->configurable();
+  configure_cli11_fapi_args(*fapi_subcmd, gnb_cfg.fapi_cfg);
+
+  // Common cell section.
   CLI::App* common_cell_subcmd = app.add_subcommand("cell_cfg", "Default cell configuration")->configurable();
   configure_cli11_common_cell_args(*common_cell_subcmd, gnb_parsed_cfg.common_cell_cfg);
   // Configure the cells to use the common cell parameters once it has been parsed and before parsing the cells.
@@ -2447,7 +2508,7 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
     }
   });
 
-  // Cell parameters.
+  // Cell section.
   app.add_option_function<std::vector<std::string>>(
       "--cells",
       [&gnb_parsed_cfg](const std::vector<std::string>& values) {
@@ -2471,7 +2532,7 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
       },
       "Sets the cell configuration on a per cell basis, overwriting the default configuration defined by cell_cfg");
 
-  // QoS parameters.
+  // QoS section.
   auto qos_lambda = [&gnb_cfg](const std::vector<std::string>& values) {
     // Prepare the radio bearers
     gnb_cfg.qos_cfg.resize(values.size());
@@ -2489,7 +2550,7 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
   app.add_option_function<std::vector<std::string>>(
       "--qos", qos_lambda, "Configures RLC and PDCP radio bearers on a per 5QI basis.");
 
-  // SRB parameters.
+  // SRB section.
   auto srb_lambda = [&gnb_cfg](const std::vector<std::string>& values) {
     // Format every SRB setting.
     for (unsigned i = 0, e = values.size(); i != e; ++i) {
@@ -2505,7 +2566,7 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
   };
   app.add_option_function<std::vector<std::string>>("--srbs", srb_lambda, "Configures signaling radio bearers.");
 
-  // Slicing parameters.
+  // Slicing section.
   auto slicing_lambda = [&gnb_cfg](const std::vector<std::string>& values) {
     // Prepare the radio bearers
     gnb_cfg.slice_cfg.resize(values.size());
@@ -2538,13 +2599,14 @@ void srsran::configure_cli11_with_gnb_appconfig_schema(CLI::App& app, gnb_parsed
   CLI::App* expert_subcmd = app.add_subcommand("expert_execution", "Expert execution configuration")->configurable();
   configure_cli11_expert_execution_args(*expert_subcmd, gnb_cfg.expert_execution_cfg);
 
+  // HAL section.
   CLI::App* hal_subcmd = app.add_subcommand("hal", "HAL configuration")->configurable();
   configure_cli11_hal_args(*hal_subcmd, gnb_cfg.hal_config);
 
   app.callback([&]() {
     manage_ru_variant(app, gnb_cfg, sdr_cfg, ofh_cfg, dummy_cfg);
     manage_hal_optional(app, gnb_cfg);
-    manage_ntn_optional(app, gnb_cfg, orbital_coordinates, ecef_coordinates);
+    manage_ntn_optional(app, gnb_cfg, epoch_time, orbital_coordinates, ecef_coordinates);
     manage_processing_delay(app, gnb_cfg);
     manage_expert_execution_threads(app, gnb_cfg);
   });
