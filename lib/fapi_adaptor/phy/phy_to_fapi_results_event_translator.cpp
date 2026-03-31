@@ -24,11 +24,21 @@
 #include "srsran/fapi/message_builders.h"
 #include "srsran/fapi/message_validators.h"
 #include "srsran/support/math/math_utils.h"
+#include <cmath>
 
 using namespace srsran;
 using namespace fapi_adaptor;
 
 namespace {
+
+/// Clears optional SINR when NaN/±inf: std::clamp and int scaling in FAPI builders are not safe for non-finite values.
+static std::optional<float> clamp_finite_ul_sinr(std::optional<float> sinr_dB, float min_v, float max_v)
+{
+  if (!sinr_dB.has_value() || !std::isfinite(sinr_dB.value())) {
+    return std::nullopt;
+  }
+  return std::clamp(sinr_dB.value(), min_v, max_v);
+}
 
 class slot_data_message_notifier_dummy : public fapi::slot_data_message_notifier
 {
@@ -207,10 +217,8 @@ void phy_to_fapi_results_event_translator::notify_pusch_uci_indication(const ul_
   static constexpr float MIN_UL_SINR_VALUE = -65.534;
   static constexpr float MAX_UL_SINR_VALUE = 65.534;
 
-  std::optional<float> sinr_dB = csi_info.get_sinr_dB();
-  if (sinr_dB.has_value()) {
-    sinr_dB = std::clamp(sinr_dB.value(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
-  }
+  std::optional<float> sinr_dB =
+      clamp_finite_ul_sinr(csi_info.get_sinr_dB(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
 
   std::optional<int>           timing_advance_offset_ns;
   std::optional<phy_time_unit> timing_advance = result.csi.get_time_alignment();
@@ -283,11 +291,8 @@ void phy_to_fapi_results_event_translator::notify_crc_indication(const ul_pusch_
   static constexpr float MIN_UL_RSRP_VALUE_DBFS = -128.0F;
   static constexpr float MAX_UL_RSRP_VALUE_DBFS = 0.0F;
 
-  // Extract the SINR which is optional and clamp it if available.
-  std::optional<float> sinr_dB = result.csi.get_sinr_dB();
-  if (sinr_dB.has_value()) {
-    sinr_dB = std::clamp(sinr_dB.value(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
-  }
+  std::optional<float> sinr_dB =
+      clamp_finite_ul_sinr(result.csi.get_sinr_dB(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
 
   // Extract timing advance.
   std::optional<int>           timing_advance_offset_ns;
@@ -298,9 +303,11 @@ void phy_to_fapi_results_event_translator::notify_crc_indication(const ul_pusch_
 
   // Extract the RSRP which is optional and clamp it if available.
   std::optional<float> rsrp = result.csi.get_rsrp_dB();
-  if (rsrp.has_value()) {
+  if (rsrp.has_value() && std::isfinite(rsrp.value())) {
     rsrp = std::clamp(
         convert_to_dBFS(rsrp.value(), dBFS_calibration_value), MIN_UL_RSRP_VALUE_DBFS, MAX_UL_RSRP_VALUE_DBFS);
+  } else {
+    rsrp = std::nullopt;
   }
 
   builder.add_pdu(handle,
@@ -403,11 +410,8 @@ static void add_format_0_1_pucch_pdu(fapi::uci_indication_message_builder& build
   static constexpr float MIN_UL_SINR_VALUE = -65.534;
   static constexpr float MAX_UL_SINR_VALUE = 65.534;
 
-  // Extract the SINR which is optional and clamp it if available.
-  std::optional<float> sinr_dB = csi_info.get_sinr_dB();
-  if (sinr_dB.has_value()) {
-    sinr_dB = std::clamp(sinr_dB.value(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
-  }
+  std::optional<float> sinr_dB =
+      clamp_finite_ul_sinr(csi_info.get_sinr_dB(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
 
   // Extract timing advance.
   std::optional<int>           timing_advance_offset_ns;
@@ -509,11 +513,8 @@ static void add_format_2_3_4_pucch_pdu(fapi::uci_indication_message_builder& bui
   static constexpr float MIN_UL_SINR_VALUE = -65.534;
   static constexpr float MAX_UL_SINR_VALUE = 65.534;
 
-  // Extract the SINR which is optional and clamp it if available.
-  std::optional<float> sinr_dB = csi_info.get_sinr_dB();
-  if (sinr_dB.has_value()) {
-    sinr_dB = std::clamp(sinr_dB.value(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
-  }
+  std::optional<float> sinr_dB =
+      clamp_finite_ul_sinr(csi_info.get_sinr_dB(), MIN_UL_SINR_VALUE, MAX_UL_SINR_VALUE);
 
   // Extract timing advance.
   std::optional<int>           timing_advance_offset_ns;

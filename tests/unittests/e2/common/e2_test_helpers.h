@@ -478,10 +478,22 @@ public:
                              const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
                              std::vector<asn1::e2sm::meas_record_item_c>& items) override
   {
+    const std::string metric_name = meas_type.meas_name().to_string();
+    const bool metric_is_real =
+        metric_name == "DRB.RlcSduDelayDl" || metric_name == "UE.DL-RI" || metric_name == "UE.UL-RI" ||
+        metric_name == "UE.DL-BRATE" || metric_name == "UE.PUSCH-SNR" || metric_name == "UE.PUSCH-RSRP" ||
+        metric_name == "UE.PUCCH-SNR" || metric_name == "UE.TA-NS" || metric_name == "UE.PUSCH-TA-NS" ||
+        metric_name == "UE.PUCCH-TA-NS" || metric_name == "UE.SRS-TA-NS" || metric_name == "UE.UL-BRATE" ||
+        metric_name == "UE.AVG-CE-DELAY" || metric_name == "UE.MAX-CE-DELAY" || metric_name == "UE.AVG-CRC-DELAY" ||
+        metric_name == "UE.MAX-CRC-DELAY" || metric_name == "UE.AVG-PUSCH-HARQ-DELAY" ||
+        metric_name == "UE.MAX-PUSCH-HARQ-DELAY" || metric_name == "UE.AVG-PUCCH-HARQ-DELAY" ||
+        metric_name == "UE.MAX-PUCCH-HARQ-DELAY" || metric_name == "UE.AVG-SR-TO-PUSCH-DELAY" ||
+        metric_name == "UE.MAX-SR-TO-PUSCH-DELAY";
+
     if (ues.size() == 0) {
       // E2 Node level measurements
       asn1::e2sm::meas_record_item_c meas_record_item;
-      if (meas_type.meas_name().to_string() == "DRB.RlcSduDelayDl") {
+      if (metric_is_real) {
         if (meas_values_float.size()) {
           meas_record_item.set_real();
           meas_record_item.real().value = meas_values_float[0];
@@ -508,7 +520,7 @@ public:
       asn1::e2sm::meas_record_item_c meas_record_item;
       if (ue_idx < presence.size()) {
         if (presence[ue_idx]) {
-          if (meas_type.meas_name().to_string() == "DRB.RlcSduDelayDl") {
+          if (metric_is_real) {
             if (meas_values_float.size()) {
               meas_record_item.set_real();
               meas_record_item.real().value = meas_values_float[ue_idx];
@@ -580,7 +592,53 @@ private:
   }
 
   std::vector<std::string> supported_metrics =
-      {"CQI", "RSRP", "RSRQ", "DRB.UEThpDl", "DRB.UEThpUl", "DRB.RlcSduDelayDl"};
+      {"CQI",
+       "UE.CQI",
+       "RSRP",
+       "RSRQ",
+       "UE.UE-INDEX",
+       "UE.PCI",
+       "UE.RNTI",
+       "UE.DL-RI",
+       "UE.UL-RI",
+       "UE.DL-BRATE",
+       "UE.DL-NOF-OK",
+       "UE.DL-NOF-NOK",
+       "UE.DL-BS",
+       "UE.PUSCH-SNR",
+       "UE.PUSCH-RSRP",
+       "UE.PUCCH-SNR",
+       "UE.TA-NS",
+       "UE.PUSCH-TA-NS",
+       "UE.PUCCH-TA-NS",
+       "UE.SRS-TA-NS",
+       "UE.DL-MCS",
+       "UE.UL-MCS",
+       "UE.UL-BRATE",
+       "UE.UL-NOF-OK",
+       "UE.UL-NOF-NOK",
+       "UE.LAST-PHR",
+       "UE.MAX-PUSCH-DISTANCE",
+       "UE.MAX-PDSCH-DISTANCE",
+       "UE.BSR",
+       "UE.NOF-PUCCH-F0F1-INVALID-HARQS",
+       "UE.NOF-PUCCH-F2F3F4-INVALID-HARQS",
+       "UE.NOF-PUCCH-F2F3F4-INVALID-CSIS",
+       "UE.NOF-PUSCH-INVALID-HARQS",
+       "UE.NOF-PUSCH-INVALID-CSIS",
+       "UE.AVG-CE-DELAY",
+       "UE.MAX-CE-DELAY",
+       "UE.AVG-CRC-DELAY",
+       "UE.MAX-CRC-DELAY",
+       "UE.AVG-PUSCH-HARQ-DELAY",
+       "UE.MAX-PUSCH-HARQ-DELAY",
+       "UE.AVG-PUCCH-HARQ-DELAY",
+       "UE.MAX-PUCCH-HARQ-DELAY",
+       "UE.AVG-SR-TO-PUSCH-DELAY",
+       "UE.MAX-SR-TO-PUSCH-DELAY",
+       "DRB.UEThpDl",
+       "DRB.UEThpUl",
+       "DRB.RlcSduDelayDl"};
   std::vector<uint32_t> presence          = {1};
   std::vector<uint32_t> cond_satisfied    = {1};
   std::vector<float>    meas_values_float = {0.15625};

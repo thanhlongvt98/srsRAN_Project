@@ -21,10 +21,140 @@
  */
 
 #include "e2sm_kpm_du_meas_provider_impl.h"
+#include <algorithm>
+#include <cmath>
 
 using namespace asn1::e2ap;
 using namespace asn1::e2sm;
 using namespace srsran;
+
+namespace {
+
+enum class sched_metric_agg { mean, sum };
+
+const scheduler_ue_metrics* find_sched_ue_metrics(const std::vector<scheduler_ue_metrics>& last_ue_metrics,
+                                                  srs_du::f1ap_ue_id_translator&            f1ap_ue_id_provider,
+                                                  const ue_id_c&                            ue)
+{
+  gnb_cu_ue_f1ap_id_t gnb_cu_ue_f1ap_id = int_to_gnb_cu_ue_f1ap_id(ue.gnb_du_ue_id().gnb_cu_ue_f1ap_id);
+  du_ue_index_t       ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
+  auto it = std::find_if(last_ue_metrics.begin(), last_ue_metrics.end(), [ue_idx](const scheduler_ue_metrics& metrics) {
+    return metrics.ue_index == ue_idx;
+  });
+
+  return it == last_ue_metrics.end() ? nullptr : &(*it);
+}
+
+template <typename Getter>
+std::optional<double> aggregate_sched_metric(const std::vector<scheduler_ue_metrics>& last_ue_metrics,
+                                             Getter                                   getter,
+                                             sched_metric_agg                         agg)
+{
+  double   sum   = 0;
+  unsigned count = 0;
+
+  for (const auto& ue_metrics : last_ue_metrics) {
+    std::optional<double> value = getter(ue_metrics);
+    if (!value.has_value()) {
+      continue;
+    }
+
+    sum += value.value();
+    ++count;
+  }
+
+  if (count == 0) {
+    return std::nullopt;
+  }
+
+  return agg == sched_metric_agg::sum ? sum : sum / count;
+}
+
+template <typename Getter>
+bool fill_sched_integer_items(const std::vector<scheduler_ue_metrics>& last_ue_metrics,
+                              srs_du::f1ap_ue_id_translator&            f1ap_ue_id_provider,
+                              const std::vector<ue_id_c>&              ues,
+                              std::vector<meas_record_item_c>&         items,
+                              Getter                                   getter,
+                              sched_metric_agg                         agg = sched_metric_agg::mean)
+{
+  bool meas_collected = false;
+
+  if (ues.empty()) {
+    meas_record_item_c meas_record_item;
+    std::optional<double> value = aggregate_sched_metric(last_ue_metrics, getter, agg);
+    if (value.has_value()) {
+      meas_record_item.set_integer() = static_cast<uint64_t>(std::llround(value.value()));
+    } else {
+      meas_record_item.set_no_value();
+    }
+    items.push_back(meas_record_item);
+    return true;
+  }
+
+  for (const auto& ue : ues) {
+    meas_record_item_c             meas_record_item;
+    const scheduler_ue_metrics* ue_metrics = find_sched_ue_metrics(last_ue_metrics, f1ap_ue_id_provider, ue);
+    if (ue_metrics == nullptr) {
+      meas_record_item.set_no_value();
+    } else {
+      std::optional<double> value = getter(*ue_metrics);
+      if (value.has_value()) {
+        meas_record_item.set_integer() = static_cast<uint64_t>(std::llround(value.value()));
+      } else {
+        meas_record_item.set_no_value();
+      }
+    }
+    items.push_back(meas_record_item);
+    meas_collected = true;
+  }
+
+  return meas_collected;
+}
+
+template <typename Getter>
+bool fill_sched_real_items(const std::vector<scheduler_ue_metrics>& last_ue_metrics,
+                           srs_du::f1ap_ue_id_translator&            f1ap_ue_id_provider,
+                           const std::vector<ue_id_c>&              ues,
+                           std::vector<meas_record_item_c>&         items,
+                           Getter                                   getter,
+                           sched_metric_agg                         agg = sched_metric_agg::mean)
+{
+  bool meas_collected = false;
+
+  if (ues.empty()) {
+    meas_record_item_c meas_record_item;
+    std::optional<double> value = aggregate_sched_metric(last_ue_metrics, getter, agg);
+    if (value.has_value()) {
+      meas_record_item.set_real().value = static_cast<float>(value.value());
+    } else {
+      meas_record_item.set_no_value();
+    }
+    items.push_back(meas_record_item);
+    return true;
+  }
+
+  for (const auto& ue : ues) {
+    meas_record_item_c             meas_record_item;
+    const scheduler_ue_metrics* ue_metrics = find_sched_ue_metrics(last_ue_metrics, f1ap_ue_id_provider, ue);
+    if (ue_metrics == nullptr) {
+      meas_record_item.set_no_value();
+    } else {
+      std::optional<double> value = getter(*ue_metrics);
+      if (value.has_value()) {
+        meas_record_item.set_real().value = static_cast<float>(value.value());
+      } else {
+        meas_record_item.set_no_value();
+      }
+    }
+    items.push_back(meas_record_item);
+    meas_collected = true;
+  }
+
+  return meas_collected;
+}
+
+} // namespace
 
 e2sm_kpm_du_meas_provider_impl::e2sm_kpm_du_meas_provider_impl(srs_du::f1ap_ue_id_translator& f1ap_ue_id_translator_) :
   logger(srslog::fetch_basic_logger("E2SM-KPM")), f1ap_ue_id_provider(f1ap_ue_id_translator_)
@@ -33,9 +163,167 @@ e2sm_kpm_du_meas_provider_impl::e2sm_kpm_du_meas_provider_impl(srs_du::f1ap_ue_i
   supported_metrics.emplace(
       "CQI", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_cqi});
   supported_metrics.emplace(
+      "UE.CQI",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_cqi});
+  supported_metrics.emplace(
       "RSRP", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rsrp});
   supported_metrics.emplace(
       "RSRQ", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rsrq});
+  supported_metrics.emplace(
+      "UE.UE-INDEX", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ue_index});
+  supported_metrics.emplace(
+      "UE.PCI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pci});
+  supported_metrics.emplace(
+      "UE.RNTI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rnti});
+  supported_metrics.emplace(
+      "UE.DL-RI",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_ri});
+  supported_metrics.emplace(
+      "UE.UL-RI",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_ri});
+  supported_metrics.emplace(
+      "UE.DL-BRATE",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_brate});
+  supported_metrics.emplace(
+      "UE.DL-NOF-OK",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_ok});
+  supported_metrics.emplace(
+      "UE.DL-NOF-NOK",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_nok});
+  supported_metrics.emplace(
+      "UE.DL-BS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_bs});
+  supported_metrics.emplace(
+      "UE.PUSCH-SNR",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_snr_db});
+  supported_metrics.emplace(
+      "UE.PUSCH-RSRP",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_rsrp_db});
+  supported_metrics.emplace(
+      "UE.PUCCH-SNR",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pucch_snr_db});
+  supported_metrics.emplace(
+      "UE.TA-NS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ta_ns});
+  supported_metrics.emplace(
+      "UE.PUSCH-TA-NS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_ta_ns});
+  supported_metrics.emplace(
+      "UE.PUCCH-TA-NS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pucch_ta_ns});
+  supported_metrics.emplace(
+      "UE.SRS-TA-NS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_srs_ta_ns});
+  supported_metrics.emplace(
+      "UE.DL-MCS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_mcs});
+  supported_metrics.emplace(
+      "UE.UL-MCS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_mcs});
+  supported_metrics.emplace(
+      "UE.UL-BRATE",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_brate});
+  supported_metrics.emplace(
+      "UE.UL-NOF-OK",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_ok});
+  supported_metrics.emplace(
+      "UE.UL-NOF-NOK",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_nok});
+  supported_metrics.emplace(
+      "UE.LAST-PHR",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_last_phr});
+  supported_metrics.emplace(
+      "UE.MAX-PUSCH-DISTANCE",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_distance});
+  supported_metrics.emplace(
+      "UE.MAX-PDSCH-DISTANCE",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pdsch_distance});
+  supported_metrics.emplace(
+      "UE.BSR",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_bsr});
+  supported_metrics.emplace(
+      "UE.NOF-PUCCH-F0F1-INVALID-HARQS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f0f1_invalid_harqs});
+  supported_metrics.emplace(
+      "UE.NOF-PUCCH-F2F3F4-INVALID-HARQS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_harqs});
+  supported_metrics.emplace(
+      "UE.NOF-PUCCH-F2F3F4-INVALID-CSIS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_csis});
+  supported_metrics.emplace(
+      "UE.NOF-PUSCH-INVALID-HARQS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_harqs});
+  supported_metrics.emplace(
+      "UE.NOF-PUSCH-INVALID-CSIS",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_csis});
+  supported_metrics.emplace(
+      "UE.AVG-CE-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_ce_delay});
+  supported_metrics.emplace(
+      "UE.MAX-CE-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_ce_delay});
+  supported_metrics.emplace(
+      "UE.AVG-CRC-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_crc_delay});
+  supported_metrics.emplace(
+      "UE.MAX-CRC-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_crc_delay});
+  supported_metrics.emplace(
+      "UE.AVG-PUSCH-HARQ-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_pusch_harq_delay});
+  supported_metrics.emplace(
+      "UE.MAX-PUSCH-HARQ-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_harq_delay});
+  supported_metrics.emplace(
+      "UE.AVG-PUCCH-HARQ-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_pucch_harq_delay});
+  supported_metrics.emplace(
+      "UE.MAX-PUCCH-HARQ-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pucch_harq_delay});
+  supported_metrics.emplace(
+      "UE.AVG-SR-TO-PUSCH-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_sr_to_pusch_delay});
+  supported_metrics.emplace(
+      "UE.MAX-SR-TO-PUSCH-DELAY",
+      e2sm_kpm_supported_metric_t{
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_sr_to_pusch_delay});
 
   supported_metrics.emplace(
       "RRU.PrbAvailDl",
@@ -336,20 +624,16 @@ bool e2sm_kpm_du_meas_provider_impl::get_cqi(const asn1::e2sm::label_info_list_l
                                              const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
                                              std::vector<asn1::e2sm::meas_record_item_c>& items)
 {
-  bool meas_collected = false;
   if (last_ue_metrics.empty()) {
     return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
   }
-  scheduler_ue_metrics ue_metrics = last_ue_metrics[0];
 
-  meas_record_item_c meas_record_item;
-  meas_record_item.set_integer() = ue_metrics.cqi_stats.get_nof_observations() > 0
-                                       ? static_cast<uint64_t>(std::round(ue_metrics.cqi_stats.get_mean()))
-                                       : 0;
-  items.push_back(meas_record_item);
-  meas_collected = true;
-
-  return meas_collected;
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.cqi_stats.get_nof_observations() == 0) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(std::round(ue_metrics.cqi_stats.get_mean()));
+  });
 }
 
 bool e2sm_kpm_du_meas_provider_impl::get_rsrp(const asn1::e2sm::label_info_list_l          label_info_list,
@@ -388,6 +672,708 @@ bool e2sm_kpm_du_meas_provider_impl::get_rsrq(const asn1::e2sm::label_info_list_
   meas_collected = true;
 
   return meas_collected;
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ue_index(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                  const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                  const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                  std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    return std::optional<double>(static_cast<unsigned>(ue_metrics.ue_index));
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pci(const asn1::e2sm::label_info_list_l          label_info_list,
+                                             const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                             const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                             std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    return std::optional<double>(ue_metrics.pci);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_rnti(const asn1::e2sm::label_info_list_l          label_info_list,
+                                              const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                              const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                              std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    return std::optional<double>(to_value(ue_metrics.rnti));
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_ri(const asn1::e2sm::label_info_list_l          label_info_list,
+                                               const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                               const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                               std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.dl_ri_stats.get_nof_observations() == 0) {
+      return std::optional<double>(1.0);
+    }
+    return std::optional<double>(ue_metrics.dl_ri_stats.get_mean());
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ul_ri(const asn1::e2sm::label_info_list_l          label_info_list,
+                                               const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                               const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                               std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.ul_ri_stats.get_nof_observations() == 0) {
+      return std::optional<double>(1.0);
+    }
+    return std::optional<double>(ue_metrics.ul_ri_stats.get_mean());
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_brate(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                  const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                  const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                  std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics,
+                               f1ap_ue_id_provider,
+                               ues,
+                               items,
+                               [](const scheduler_ue_metrics& ue_metrics) {
+                                 return std::optional<double>(ue_metrics.dl_brate_kbps);
+                               },
+                               sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_nof_ok(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                   const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                   const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                   std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.dl_nof_ok);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_nof_nok(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.dl_nof_nok);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_bs(const asn1::e2sm::label_info_list_l          label_info_list,
+                                               const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                               const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                               std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.dl_bs);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pusch_snr_db(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                      const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                      const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                      std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!std::isfinite(ue_metrics.pusch_snr_db)) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.pusch_snr_db);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pusch_rsrp_db(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                       const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                       const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                       std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!std::isfinite(ue_metrics.pusch_rsrp_db)) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.pusch_rsrp_db);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pucch_snr_db(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                      const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                      const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                      std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!std::isfinite(ue_metrics.pucch_snr_db)) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.pucch_snr_db);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ta_ns(const asn1::e2sm::label_info_list_l          label_info_list,
+                                               const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                               const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                               std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.ta_stats.get_nof_observations() == 0) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.ta_stats.get_mean() * 1e9);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pusch_ta_ns(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                     const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                     const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                     std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.pusch_ta_stats.get_nof_observations() == 0) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.pusch_ta_stats.get_mean() * 1e9);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_pucch_ta_ns(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                     const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                     const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                     std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.pucch_ta_stats.get_nof_observations() == 0) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.pucch_ta_stats.get_mean() * 1e9);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_srs_ta_ns(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                   const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                   const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                   std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (ue_metrics.srs_ta_stats.get_nof_observations() == 0) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(ue_metrics.srs_ta_stats.get_mean() * 1e9);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_dl_mcs(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    return std::optional<double>(ue_metrics.dl_mcs.to_uint());
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ul_mcs(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    return std::optional<double>(ue_metrics.ul_mcs.to_uint());
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ul_brate(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                  const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                  const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                  std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics,
+                               f1ap_ue_id_provider,
+                               ues,
+                               items,
+                               [](const scheduler_ue_metrics& ue_metrics) {
+                                 return std::optional<double>(ue_metrics.ul_brate_kbps);
+                               },
+                               sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ul_nof_ok(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                   const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                   const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                   std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.ul_nof_ok);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_ul_nof_nok(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.ul_nof_nok);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_last_phr(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                  const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                  const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                  std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.last_phr.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.last_phr);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_pusch_distance(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                            const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                            const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                            std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_pusch_distance_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_pusch_distance_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_pdsch_distance(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                            const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                            const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                            std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_pdsch_distance_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_pdsch_distance_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_bsr(const asn1::e2sm::label_info_list_l          label_info_list,
+                                             const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                             const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                             std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.bsr);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f0f1_invalid_harqs(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.nof_pucch_f0f1_invalid_harqs);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_harqs(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.nof_pucch_f2f3f4_invalid_harqs);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_csis(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.nof_pucch_f2f3f4_invalid_csis);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_harqs(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.nof_pusch_invalid_harqs);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_csis(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::integer);
+  }
+
+  return fill_sched_integer_items(last_ue_metrics,
+                                  f1ap_ue_id_provider,
+                                  ues,
+                                  items,
+                                  [](const scheduler_ue_metrics& ue_metrics) {
+                                    return std::optional<double>(ue_metrics.nof_pusch_invalid_csis);
+                                  },
+                                  sched_metric_agg::sum);
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_avg_ce_delay(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                      const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                      const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                      std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.avg_ce_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.avg_ce_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_ce_delay(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                      const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                      const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                      std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_ce_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_ce_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_avg_crc_delay(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                       const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                       const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                       std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.avg_crc_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.avg_crc_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_crc_delay(const asn1::e2sm::label_info_list_l          label_info_list,
+                                                       const std::vector<asn1::e2sm::ue_id_c>&      ues,
+                                                       const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+                                                       std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_crc_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_crc_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_avg_pusch_harq_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.avg_pusch_harq_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.avg_pusch_harq_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_pusch_harq_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_pusch_harq_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_pusch_harq_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_avg_pucch_harq_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.avg_pucch_harq_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.avg_pucch_harq_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_pucch_harq_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_pucch_harq_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_pucch_harq_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_avg_sr_to_pusch_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.avg_sr_to_pusch_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.avg_sr_to_pusch_delay_ms);
+  });
+}
+
+bool e2sm_kpm_du_meas_provider_impl::get_max_sr_to_pusch_delay(
+    const asn1::e2sm::label_info_list_l          label_info_list,
+    const std::vector<asn1::e2sm::ue_id_c>&      ues,
+    const std::optional<asn1::e2sm::cgi_c>       cell_global_id,
+    std::vector<asn1::e2sm::meas_record_item_c>& items)
+{
+  if (last_ue_metrics.empty()) {
+    return handle_no_meas_data_available(ues, items, asn1::e2sm::meas_record_item_c::types::options::real);
+  }
+
+  return fill_sched_real_items(last_ue_metrics, f1ap_ue_id_provider, ues, items, [](const scheduler_ue_metrics& ue_metrics) {
+    if (!ue_metrics.max_sr_to_pusch_delay_ms.has_value()) {
+      return std::optional<double>{};
+    }
+    return std::optional<double>(*ue_metrics.max_sr_to_pusch_delay_ms);
+  });
 }
 
 bool e2sm_kpm_du_meas_provider_impl::get_prb_avail_dl(const asn1::e2sm::label_info_list_l          label_info_list,

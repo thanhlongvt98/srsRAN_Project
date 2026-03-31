@@ -24,6 +24,7 @@
 #include "tests/unittests/e2/common/e2_test_helpers.h"
 #include "srsran/ran/du_types.h"
 #include <gtest/gtest.h>
+#include <array>
 
 using namespace srsran;
 using namespace asn1::e2sm;
@@ -99,10 +100,45 @@ static scheduler_cell_metrics generate_non_zero_sched_metrics()
   ue_metrics.rnti                = static_cast<rnti_t>(0x1000 + 1);
   ue_metrics.tot_pdsch_prbs_used = 1200;
   ue_metrics.tot_pusch_prbs_used = 1200;
-  ue_metrics.avg_crc_delay_ms    = 100;
-  ue_metrics.pusch_snr_db        = 10;
+  ue_metrics.dl_brate_kbps       = 2000.5;
+  ue_metrics.dl_nof_ok           = 12;
+  ue_metrics.dl_nof_nok          = 2;
+  ue_metrics.dl_bs               = 3456;
+  ue_metrics.pusch_rsrp_db       = -10.5;
+  ue_metrics.pusch_snr_db        = 10.25;
+  ue_metrics.pucch_snr_db        = 8.75;
+  ue_metrics.dl_mcs              = sch_mcs_index{17};
+  ue_metrics.ul_mcs              = sch_mcs_index{13};
+  ue_metrics.ul_brate_kbps       = 1500.75;
+  ue_metrics.ul_nof_ok           = 11;
+  ue_metrics.ul_nof_nok          = 3;
+  ue_metrics.bsr                 = 7890;
+  ue_metrics.last_phr            = 42;
+  ue_metrics.max_pusch_distance_ms = 7;
+  ue_metrics.max_pdsch_distance_ms = 9;
+  ue_metrics.nof_pucch_f0f1_invalid_harqs   = 1;
+  ue_metrics.nof_pucch_f2f3f4_invalid_harqs = 2;
+  ue_metrics.nof_pucch_f2f3f4_invalid_csis  = 3;
+  ue_metrics.nof_pusch_invalid_harqs        = 4;
+  ue_metrics.nof_pusch_invalid_csis         = 5;
+  ue_metrics.avg_ce_delay_ms                = 3.5F;
+  ue_metrics.max_ce_delay_ms                = 4.5F;
+  ue_metrics.avg_crc_delay_ms               = 5.5F;
+  ue_metrics.max_crc_delay_ms               = 6.5F;
+  ue_metrics.avg_pusch_harq_delay_ms        = 7.5F;
+  ue_metrics.max_pusch_harq_delay_ms        = 8.5F;
+  ue_metrics.avg_pucch_harq_delay_ms        = 9.5F;
+  ue_metrics.max_pucch_harq_delay_ms        = 10.5F;
+  ue_metrics.avg_sr_to_pusch_delay_ms       = 11.5F;
+  ue_metrics.max_sr_to_pusch_delay_ms       = 12.5F;
+  ue_metrics.ta_stats.update(1.2e-6F);
+  ue_metrics.pusch_ta_stats.update(1.4e-6F);
+  ue_metrics.pucch_ta_stats.update(1.6e-6F);
+  ue_metrics.srs_ta_stats.update(1.8e-6F);
   for (auto i = 0; i < 10; i++) {
-    ue_metrics.cqi_stats.update(i);
+    ue_metrics.cqi_stats.update(9);
+    ue_metrics.dl_ri_stats.update(2);
+    ue_metrics.ul_ri_stats.update(1);
   }
   sched_metric.ue_metrics.push_back(ue_metrics);
 
@@ -318,5 +354,126 @@ TEST_F(e2sm_kpm_meas_provider_metrics_test, e2sm_kpm_return_e2_level_metric_with
                            << " returned a record with wrong type.";
         break;
     }
+  }
+}
+
+TEST_F(e2sm_kpm_meas_provider_metrics_test, e2sm_kpm_returns_new_ue_scheduler_metrics)
+{
+  scheduler_cell_metrics sched_metrics = generate_non_zero_sched_metrics();
+  metrics->report_metrics(sched_metrics);
+
+  label_info_list_l label_info_list;
+  label_info_item_s label_info_item           = {};
+  label_info_item.meas_label.no_label_present = true;
+  label_info_item.meas_label.no_label         = meas_label_s::no_label_e_::true_value;
+  label_info_list.push_back(label_info_item);
+
+  ue_id_c        ue_id;
+  ue_id_gnb_du_s ue_id_gnb_du{};
+  ue_id_gnb_du.gnb_cu_ue_f1ap_id = 0;
+  ue_id_gnb_du.ran_ue_id_present = false;
+  ue_id.set_gnb_du_ue_id()       = ue_id_gnb_du;
+  std::vector<ue_id_c> ues = {ue_id};
+
+  struct expected_metric_t {
+    const char* name;
+    bool        is_real;
+    double      value;
+  };
+
+  const std::array<expected_metric_t, 41> expected_metrics = {{
+      {"UE.UE-INDEX", false, 0},
+      {"UE.PCI", false, 1},
+      {"UE.RNTI", false, 0x1001},
+      {"UE.CQI", false, 9},
+      {"UE.DL-RI", true, 2.0},
+      {"UE.UL-RI", true, 1.0},
+      {"UE.DL-MCS", false, 17},
+      {"UE.DL-BRATE", true, 2000.5},
+      {"UE.DL-NOF-OK", false, 12},
+      {"UE.DL-NOF-NOK", false, 2},
+      {"UE.DL-BS", false, 3456},
+      {"UE.PUSCH-SNR", true, 10.25},
+      {"UE.PUSCH-RSRP", true, -10.5},
+      {"UE.PUCCH-SNR", true, 8.75},
+      {"UE.TA-NS", true, 1200.0},
+      {"UE.PUSCH-TA-NS", true, 1400.0},
+      {"UE.PUCCH-TA-NS", true, 1600.0},
+      {"UE.SRS-TA-NS", true, 1800.0},
+      {"UE.UL-MCS", false, 13},
+      {"UE.UL-BRATE", true, 1500.75},
+      {"UE.UL-NOF-OK", false, 11},
+      {"UE.UL-NOF-NOK", false, 3},
+      {"UE.LAST-PHR", false, 42},
+      {"UE.MAX-PUSCH-DISTANCE", false, 7},
+      {"UE.MAX-PDSCH-DISTANCE", false, 9},
+      {"UE.BSR", false, 7890},
+      {"UE.NOF-PUCCH-F0F1-INVALID-HARQS", false, 1},
+      {"UE.NOF-PUCCH-F2F3F4-INVALID-HARQS", false, 2},
+      {"UE.NOF-PUCCH-F2F3F4-INVALID-CSIS", false, 3},
+      {"UE.NOF-PUSCH-INVALID-HARQS", false, 4},
+      {"UE.NOF-PUSCH-INVALID-CSIS", false, 5},
+      {"UE.AVG-CE-DELAY", true, 3.5},
+      {"UE.MAX-CE-DELAY", true, 4.5},
+      {"UE.AVG-CRC-DELAY", true, 5.5},
+      {"UE.MAX-CRC-DELAY", true, 6.5},
+      {"UE.AVG-PUSCH-HARQ-DELAY", true, 7.5},
+      {"UE.MAX-PUSCH-HARQ-DELAY", true, 8.5},
+      {"UE.AVG-PUCCH-HARQ-DELAY", true, 9.5},
+      {"UE.MAX-PUCCH-HARQ-DELAY", true, 10.5},
+      {"UE.AVG-SR-TO-PUSCH-DELAY", true, 11.5},
+      {"UE.MAX-SR-TO-PUSCH-DELAY", true, 12.5},
+  }};
+
+  for (const auto& expected_metric : expected_metrics) {
+    meas_type_c meas_type;
+    meas_type.set_meas_name().from_string(expected_metric.name);
+
+    std::vector<meas_record_item_c> meas_records_items;
+    ASSERT_TRUE(du_meas_provider->get_meas_data(meas_type, label_info_list, ues, {}, meas_records_items));
+    ASSERT_EQ(meas_records_items.size(), 1);
+
+    if (expected_metric.is_real) {
+      ASSERT_EQ(meas_records_items[0].type().value, meas_record_item_c::types::real);
+      ASSERT_FLOAT_EQ(meas_records_items[0].real().value, static_cast<float>(expected_metric.value));
+    } else {
+      ASSERT_EQ(meas_records_items[0].type().value, meas_record_item_c::types::integer);
+      ASSERT_EQ(meas_records_items[0].integer(), static_cast<uint64_t>(expected_metric.value));
+    }
+  }
+}
+
+TEST_F(e2sm_kpm_meas_provider_metrics_test, e2sm_kpm_returns_default_ri_when_no_observations_exist)
+{
+  scheduler_cell_metrics sched_metrics;
+  scheduler_ue_metrics   ue_metrics;
+  ue_metrics.ue_index = to_du_ue_index(0);
+  ue_metrics.pci      = 1;
+  ue_metrics.rnti     = static_cast<rnti_t>(0x1001);
+  sched_metrics.ue_metrics.push_back(ue_metrics);
+  metrics->report_metrics(sched_metrics);
+
+  label_info_list_l label_info_list;
+  label_info_item_s label_info_item           = {};
+  label_info_item.meas_label.no_label_present = true;
+  label_info_item.meas_label.no_label         = meas_label_s::no_label_e_::true_value;
+  label_info_list.push_back(label_info_item);
+
+  ue_id_c        ue_id;
+  ue_id_gnb_du_s ue_id_gnb_du{};
+  ue_id_gnb_du.gnb_cu_ue_f1ap_id = 0;
+  ue_id_gnb_du.ran_ue_id_present = false;
+  ue_id.set_gnb_du_ue_id()       = ue_id_gnb_du;
+  std::vector<ue_id_c> ues = {ue_id};
+
+  for (const char* metric_name : {"UE.DL-RI", "UE.UL-RI"}) {
+    meas_type_c meas_type;
+    meas_type.set_meas_name().from_string(metric_name);
+
+    std::vector<meas_record_item_c> meas_records_items;
+    ASSERT_TRUE(du_meas_provider->get_meas_data(meas_type, label_info_list, ues, {}, meas_records_items));
+    ASSERT_EQ(meas_records_items.size(), 1);
+    ASSERT_EQ(meas_records_items[0].type().value, meas_record_item_c::types::real);
+    ASSERT_FLOAT_EQ(meas_records_items[0].real().value, 1.0F);
   }
 }
