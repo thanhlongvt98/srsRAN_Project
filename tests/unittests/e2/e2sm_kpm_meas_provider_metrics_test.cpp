@@ -23,6 +23,7 @@
 #include "lib/e2/e2sm/e2sm_kpm/e2sm_kpm_du_meas_provider_impl.h"
 #include "tests/unittests/e2/common/e2_test_helpers.h"
 #include "srsran/ran/du_types.h"
+#include "srsran/ran/sch/sch_mcs.h"
 #include <gtest/gtest.h>
 
 using namespace srsran;
@@ -101,6 +102,23 @@ static scheduler_cell_metrics generate_non_zero_sched_metrics()
   ue_metrics.tot_pusch_prbs_used = 1200;
   ue_metrics.avg_crc_delay_ms    = 100;
   ue_metrics.pusch_snr_db        = 10;
+  ue_metrics.pusch_rsrp_db       = -85.F;
+  ue_metrics.pucch_snr_db        = 6.F;
+  ue_metrics.dl_brate_kbps       = 123.4;
+  ue_metrics.ul_brate_kbps       = 56.7;
+  ue_metrics.dl_nof_ok           = 90;
+  ue_metrics.dl_nof_nok          = 10;
+  ue_metrics.ul_nof_ok           = 80;
+  ue_metrics.ul_nof_nok          = 5;
+  ue_metrics.dl_mcs              = sch_mcs_index(12);
+  ue_metrics.ul_mcs              = sch_mcs_index(10);
+  ue_metrics.bsr                 = 400;
+  ue_metrics.dl_bs               = 200;
+  ue_metrics.last_phr            = 3;
+  for (unsigned k = 0; k < 4; ++k) {
+    ue_metrics.dl_ri_stats.update(2);
+    ue_metrics.ul_ri_stats.update(1);
+  }
   for (auto i = 0; i < 10; i++) {
     ue_metrics.cqi_stats.update(i);
   }
@@ -315,8 +333,56 @@ TEST_F(e2sm_kpm_meas_provider_metrics_test, e2sm_kpm_return_e2_level_metric_with
       default:
         printf("%s type: %i\n", metric.c_str(), meas_records_items[0].type().value);
         ASSERT_TRUE(false) << "Metric: " << metric << " Level: " << e2sm_kpm_scope_2_str(metric_level)
-                           << " returned a record with wrong type.";
+                           << " returned a record with the wrong type.";
         break;
     }
   }
+}
+
+TEST_F(e2sm_kpm_meas_provider_metrics_test, e2sm_kpm_scheduler_kpis_match_fixture)
+{
+  rlc_metrics            rlc_metric    = generate_non_zero_rlc_metrics(0, 1);
+  scheduler_cell_metrics sched_metrics = generate_non_zero_sched_metrics();
+  meas_type_c            meas_type;
+  std::optional<asn1::e2sm::cgi_c> cell_global_id = {};
+  label_info_list_l      label_info_list;
+  label_info_item_s      label_info_item       = {};
+  label_info_item.meas_label.no_label_present = true;
+  label_info_item.meas_label.no_label         = meas_label_s::no_label_e_::true_value;
+  label_info_list.push_back(label_info_item);
+  std::vector<meas_record_item_c> meas_records_items;
+
+  metrics->report_metrics(rlc_metric);
+  metrics->report_metrics(sched_metrics);
+
+  meas_type.set_meas_name().from_string("DRB.UEThpDl");
+  du_meas_provider->get_meas_data(meas_type, label_info_list, {}, cell_global_id, meas_records_items);
+  ASSERT_EQ(meas_records_items.size(), 1U);
+  ASSERT_EQ(meas_records_items[0].type(), meas_record_item_c::types::real);
+  EXPECT_FLOAT_EQ(meas_records_items[0].real().value, 123.4F);
+
+  meas_type.set_meas_name().from_string("DRB.UEThpUl");
+  meas_records_items.clear();
+  du_meas_provider->get_meas_data(meas_type, label_info_list, {}, cell_global_id, meas_records_items);
+  ASSERT_EQ(meas_records_items.size(), 1U);
+  EXPECT_FLOAT_EQ(meas_records_items[0].real().value, 56.7F);
+
+  meas_type.set_meas_name().from_string("SRS.MAC.DlBler");
+  meas_records_items.clear();
+  du_meas_provider->get_meas_data(meas_type, label_info_list, {}, cell_global_id, meas_records_items);
+  ASSERT_EQ(meas_records_items.size(), 1U);
+  EXPECT_FLOAT_EQ(meas_records_items[0].real().value, 10.F);
+
+  meas_type.set_meas_name().from_string("RSRP");
+  meas_records_items.clear();
+  du_meas_provider->get_meas_data(meas_type, label_info_list, {}, cell_global_id, meas_records_items);
+  ASSERT_EQ(meas_records_items.size(), 1U);
+  ASSERT_EQ(meas_records_items[0].type(), meas_record_item_c::types::real);
+  EXPECT_FLOAT_EQ(meas_records_items[0].real().value, -85.F);
+
+  meas_type.set_meas_name().from_string("RSRQ");
+  meas_records_items.clear();
+  du_meas_provider->get_meas_data(meas_type, label_info_list, {}, cell_global_id, meas_records_items);
+  ASSERT_EQ(meas_records_items.size(), 1U);
+  EXPECT_FLOAT_EQ(meas_records_items[0].real().value, 6.F);
 }

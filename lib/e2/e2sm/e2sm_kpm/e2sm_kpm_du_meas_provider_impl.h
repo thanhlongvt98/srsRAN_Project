@@ -121,6 +121,16 @@ private:
   metric_meas_getter_func_t get_drb_dl_rlc_sdu_latency;
   metric_meas_getter_func_t get_drb_ul_rlc_sdu_latency;
   metric_meas_getter_func_t get_prach_cell_count;
+  metric_meas_getter_func_t get_srs_mac_dl_bler;
+  metric_meas_getter_func_t get_srs_mac_ul_bler;
+  metric_meas_getter_func_t get_srs_mac_dl_mcs;
+  metric_meas_getter_func_t get_srs_mac_ul_mcs;
+  metric_meas_getter_func_t get_srs_mac_bsr;
+  metric_meas_getter_func_t get_srs_mac_dl_bs;
+  metric_meas_getter_func_t get_srs_mac_dl_ri;
+  metric_meas_getter_func_t get_srs_mac_ul_ri;
+  metric_meas_getter_func_t get_srs_mac_pusch_snr_db;
+  metric_meas_getter_func_t get_srs_mac_phr;
 
   srslog::basic_logger&                              logger;
   srs_du::f1ap_ue_id_translator&                     f1ap_ue_id_provider;
