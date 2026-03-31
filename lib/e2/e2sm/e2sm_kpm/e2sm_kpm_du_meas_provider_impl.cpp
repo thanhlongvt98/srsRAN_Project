@@ -30,6 +30,15 @@ using namespace srsran;
 
 namespace {
 
+/// Mean PRBs used per slot over the KPM window (rounded). Integer division was truncating light traffic to 0.
+unsigned mean_prbs_per_slot(unsigned tot_prbs, unsigned nof_slots)
+{
+  if (nof_slots == 0) {
+    return 0;
+  }
+  return static_cast<unsigned>(std::llround(static_cast<double>(tot_prbs) / static_cast<double>(nof_slots)));
+}
+
 enum class sched_metric_agg { mean, sum };
 
 const scheduler_ue_metrics* find_sched_ue_metrics(const std::vector<scheduler_ue_metrics>& last_ue_metrics,
@@ -1472,7 +1481,8 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_used_dl(const asn1::e2sm::label_inf
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
     if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
-      unsigned ue_mean_dl_prbs_used = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
+      unsigned ue_mean_dl_prbs_used =
+          mean_prbs_per_slot(last_ue_metrics[ue_idx].tot_pdsch_prbs_used, nof_dl_slots);
       meas_record_item.set_integer() = ue_mean_dl_prbs_used;
     } else {
       meas_record_item.set_no_value();
@@ -1518,7 +1528,8 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_used_ul(const asn1::e2sm::label_inf
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
     if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
-      unsigned ue_mean_ul_prbs_used = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
+      unsigned ue_mean_ul_prbs_used =
+          mean_prbs_per_slot(last_ue_metrics[ue_idx].tot_pusch_prbs_used, nof_ul_slots);
       meas_record_item.set_integer() = ue_mean_ul_prbs_used;
     } else {
       meas_record_item.set_no_value();
@@ -1564,7 +1575,8 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_use_perc_dl(const asn1::e2sm::label
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
     if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
-      unsigned ue_mean_dl_prbs_used = nof_dl_slots > 0 ? last_ue_metrics[ue_idx].tot_pdsch_prbs_used / nof_dl_slots : 0;
+      unsigned ue_mean_dl_prbs_used =
+          mean_prbs_per_slot(last_ue_metrics[ue_idx].tot_pdsch_prbs_used, nof_dl_slots);
       meas_record_item.set_integer() = ue_mean_dl_prbs_used * 100 / nof_cell_prbs;
     } else {
       meas_record_item.set_no_value();
@@ -1609,7 +1621,8 @@ bool e2sm_kpm_du_meas_provider_impl::get_prb_use_perc_ul(const asn1::e2sm::label
     uint32_t            ue_idx            = f1ap_ue_id_provider.get_ue_index(gnb_cu_ue_f1ap_id);
     meas_record_item_c  meas_record_item;
     if (ue_idx != du_ue_index_t::INVALID_DU_UE_INDEX && ue_idx < last_ue_metrics.size()) {
-      unsigned ue_mean_ul_prbs_used = nof_ul_slots > 0 ? last_ue_metrics[ue_idx].tot_pusch_prbs_used / nof_ul_slots : 0;
+      unsigned ue_mean_ul_prbs_used =
+          mean_prbs_per_slot(last_ue_metrics[ue_idx].tot_pusch_prbs_used, nof_ul_slots);
       meas_record_item.set_integer() = ue_mean_ul_prbs_used * 100 / nof_cell_prbs;
     } else {
       meas_record_item.set_no_value();
