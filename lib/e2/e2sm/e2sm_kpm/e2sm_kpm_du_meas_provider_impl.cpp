@@ -161,169 +161,169 @@ e2sm_kpm_du_meas_provider_impl::e2sm_kpm_du_meas_provider_impl(srs_du::f1ap_ue_i
 {
   // Array of supported metrics.
   supported_metrics.emplace(
-      "CQI", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_cqi});
+      "CQI", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_cqi});
   supported_metrics.emplace(
       "UE.CQI",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_cqi});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_cqi});
   supported_metrics.emplace(
-      "RSRP", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rsrp});
+      "RSRP", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_rsrp});
   supported_metrics.emplace(
-      "RSRQ", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rsrq});
+      "RSRQ", e2sm_kpm_supported_metric_t{NO_LABEL, UNKNOWN_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_rsrq});
   supported_metrics.emplace(
-      "UE.UE-INDEX", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ue_index});
+      "UE.UE-INDEX", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ue_index});
   supported_metrics.emplace(
-      "UE.PCI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pci});
+      "UE.PCI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pci});
   supported_metrics.emplace(
-      "UE.RNTI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_rnti});
+      "UE.RNTI", e2sm_kpm_supported_metric_t{NO_LABEL, UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_rnti});
   supported_metrics.emplace(
       "UE.DL-RI",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_ri});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_ri});
   supported_metrics.emplace(
       "UE.UL-RI",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_ri});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ul_ri});
   supported_metrics.emplace(
       "UE.DL-BRATE",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_brate});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_brate});
   supported_metrics.emplace(
       "UE.DL-NOF-OK",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_ok});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_ok});
   supported_metrics.emplace(
       "UE.DL-NOF-NOK",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_nok});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_nof_nok});
   supported_metrics.emplace(
       "UE.DL-BS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_bs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_bs});
   supported_metrics.emplace(
       "UE.PUSCH-SNR",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_snr_db});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pusch_snr_db});
   supported_metrics.emplace(
       "UE.PUSCH-RSRP",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_rsrp_db});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pusch_rsrp_db});
   supported_metrics.emplace(
       "UE.PUCCH-SNR",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pucch_snr_db});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pucch_snr_db});
   supported_metrics.emplace(
       "UE.TA-NS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ta_ns});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ta_ns});
   supported_metrics.emplace(
       "UE.PUSCH-TA-NS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pusch_ta_ns});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pusch_ta_ns});
   supported_metrics.emplace(
       "UE.PUCCH-TA-NS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_pucch_ta_ns});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_pucch_ta_ns});
   supported_metrics.emplace(
       "UE.SRS-TA-NS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_srs_ta_ns});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_srs_ta_ns});
   supported_metrics.emplace(
       "UE.DL-MCS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_dl_mcs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_dl_mcs});
   supported_metrics.emplace(
       "UE.UL-MCS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_mcs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ul_mcs});
   supported_metrics.emplace(
       "UE.UL-BRATE",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_brate});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ul_brate});
   supported_metrics.emplace(
       "UE.UL-NOF-OK",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_ok});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_ok});
   supported_metrics.emplace(
       "UE.UL-NOF-NOK",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_nok});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_ul_nof_nok});
   supported_metrics.emplace(
       "UE.LAST-PHR",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_last_phr});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_last_phr});
   supported_metrics.emplace(
       "UE.MAX-PUSCH-DISTANCE",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_distance});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_distance});
   supported_metrics.emplace(
       "UE.MAX-PDSCH-DISTANCE",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pdsch_distance});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_pdsch_distance});
   supported_metrics.emplace(
       "UE.BSR",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_bsr});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_bsr});
   supported_metrics.emplace(
       "UE.NOF-PUCCH-F0F1-INVALID-HARQS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f0f1_invalid_harqs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f0f1_invalid_harqs});
   supported_metrics.emplace(
       "UE.NOF-PUCCH-F2F3F4-INVALID-HARQS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_harqs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_harqs});
   supported_metrics.emplace(
       "UE.NOF-PUCCH-F2F3F4-INVALID-CSIS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_csis});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_nof_pucch_f2f3f4_invalid_csis});
   supported_metrics.emplace(
       "UE.NOF-PUSCH-INVALID-HARQS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_harqs});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_harqs});
   supported_metrics.emplace(
       "UE.NOF-PUSCH-INVALID-CSIS",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_csis});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_nof_pusch_invalid_csis});
   supported_metrics.emplace(
       "UE.AVG-CE-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_ce_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_avg_ce_delay});
   supported_metrics.emplace(
       "UE.MAX-CE-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_ce_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_ce_delay});
   supported_metrics.emplace(
       "UE.AVG-CRC-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_crc_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_avg_crc_delay});
   supported_metrics.emplace(
       "UE.MAX-CRC-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_crc_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_crc_delay});
   supported_metrics.emplace(
       "UE.AVG-PUSCH-HARQ-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_pusch_harq_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_avg_pusch_harq_delay});
   supported_metrics.emplace(
       "UE.MAX-PUSCH-HARQ-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_harq_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_pusch_harq_delay});
   supported_metrics.emplace(
       "UE.AVG-PUCCH-HARQ-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_pucch_harq_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_avg_pucch_harq_delay});
   supported_metrics.emplace(
       "UE.MAX-PUCCH-HARQ-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_pucch_harq_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_pucch_harq_delay});
   supported_metrics.emplace(
       "UE.AVG-SR-TO-PUSCH-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_avg_sr_to_pusch_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_avg_sr_to_pusch_delay});
   supported_metrics.emplace(
       "UE.MAX-SR-TO-PUSCH-DELAY",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, false, &e2sm_kpm_du_meas_provider_impl::get_max_sr_to_pusch_delay});
+          NO_LABEL, E2_NODE_LEVEL | UE_LEVEL, true, &e2sm_kpm_du_meas_provider_impl::get_max_sr_to_pusch_delay});
 
   supported_metrics.emplace(
       "RRU.PrbAvailDl",

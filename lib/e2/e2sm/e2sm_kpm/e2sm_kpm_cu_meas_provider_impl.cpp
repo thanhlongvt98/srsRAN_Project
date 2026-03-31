@@ -189,7 +189,7 @@ e2sm_kpm_cu_up_meas_provider_impl::e2sm_kpm_cu_up_meas_provider_impl() : e2sm_kp
   supported_metrics.emplace(
       "DRB.PacketSuccessRateUlgNBUu",
       e2sm_kpm_supported_metric_t{
-          NO_LABEL, E2_NODE_LEVEL, false, &e2sm_kpm_cu_up_meas_provider_impl::get_packet_success_rate_ul_gnb_uu});
+          NO_LABEL, E2_NODE_LEVEL, true, &e2sm_kpm_cu_up_meas_provider_impl::get_packet_success_rate_ul_gnb_uu});
 }
 
 bool e2sm_kpm_cu_meas_provider_impl::get_pdcp_reordering_delay_ul(const asn1::e2sm::label_info_list_l label_info_list,
