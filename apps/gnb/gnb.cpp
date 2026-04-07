@@ -164,6 +164,12 @@ static void register_app_logs(const gnb_appconfig&            gnb_cfg,
   e2ap_logger.set_level(log_cfg.e2ap_level);
   e2ap_logger.set_hex_dump_max_size(log_cfg.hex_max_size);
 
+  for (const auto& id : {"E2SM-KPM", "E2-SUBSCRIBER"}) {
+    auto& logger = srslog::fetch_basic_logger(id, false);
+    logger.set_level(log_cfg.all_level);
+    logger.set_hex_dump_max_size(log_cfg.hex_max_size);
+  }
+
   // Metrics log channels.
   const app_helpers::metrics_config& metrics_cfg = gnb_cfg.metrics_cfg.rusage_config.metrics_consumers_cfg;
   app_helpers::initialize_metrics_log_channels(metrics_cfg, log_cfg.hex_max_size);

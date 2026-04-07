@@ -158,6 +158,12 @@ static void register_app_logs(const du_appconfig& du_cfg, flexible_o_du_applicat
   e2ap_logger.set_level(log_cfg.e2ap_level);
   e2ap_logger.set_hex_dump_max_size(log_cfg.hex_max_size);
 
+  for (const auto& id : {"E2SM-KPM", "E2-SUBSCRIBER"}) {
+    auto& logger = srslog::fetch_basic_logger(id, false);
+    logger.set_level(log_cfg.all_level);
+    logger.set_hex_dump_max_size(log_cfg.hex_max_size);
+  }
+
   // Register units logs.
   du_app_unit.on_loggers_registration();
 }
